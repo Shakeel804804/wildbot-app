@@ -60,6 +60,7 @@
 <div class="sec">
   <h2>1 · Title, Script, Voiceover</h2>
   <label class="lbl">Title</label><input type="text" id="title" placeholder="Video title">
+  <label class="lbl">Main topic <span style="color:var(--dim);font-weight:normal">(what is this video about? e.g. dog, Burmese python)</span></label><input type="text" id="topic" placeholder="Main topic — every clip search stays on this">
   <label class="lbl">Script (narration)</label><textarea id="script" placeholder="Paste full narration…"></textarea>
   <label class="lbl">Voiceover (mp3)</label><input type="file" id="vo" accept="audio/*">
   <div class="okline" id="voInfo"></div>
@@ -130,10 +131,17 @@ $('#vo').addEventListener('change', e=>{
 /* scene split */
 function sentences(t){ return t.replace(/\n+/g,' ').match(/[^.!?]+[.!?]+["']?|\S[^.!?]*$/g)?.map(s=>s.trim()).filter(Boolean)||[]; }
 function autoTerm(text){
+  const topic=($('#topic')&&$('#topic').value||'').trim().toLowerCase();
   const stop=new Set('the,a,an,and,of,to,in,is,are,was,were,it,its,for,on,with,as,by,at,from,that,this,these,those,he,she,they,we,you,i,not,but,or,so,very,just,like,than,then,when,where,what,which,who,whom,whose,how,all,any,both,each,few,more,most,other,some,such,no,nor,only,own,same,too,can,will,has,have,had,do,does,did,been,being,into,over,after,before,between,through,during,under,again,once,here,there'.split(','));
   const words=text.toLowerCase().replace(/[^a-z\s]/g,'').split(/\s+/).filter(w=>w.length>3&&!stop.has(w));
   const fq={}; words.forEach(w=>fq[w]=(fq[w]||0)+1);
-  return Object.entries(fq).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]).join(' ');
+  const ranked=Object.entries(fq).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  if(topic){
+    const tset=new Set(topic.split(/\s+/));
+    const scene=ranked.filter(w=>!tset.has(w)).slice(0,2);
+    return scene.length? topic+' '+scene.join(' ') : topic;
+  }
+  return ranked.slice(0,3).join(' ');
 }
 function splitScenes(){
   const script=$('#script').value.trim();
