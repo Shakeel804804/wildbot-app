@@ -184,8 +184,17 @@ $('#btnFind').addEventListener('click', async ()=>{
     const s=S.scenes[i]; let cands=[];
     try{ if(S.cfg.pexels) cands=cands.concat(await searchPexels(s.term)); }catch(e){}
     try{ if(S.cfg.pixabay) cands=cands.concat(await searchPixabay(s.term)); }catch(e){}
+    if(!cands.length){
+      const topic=($('#topic')&&$('#topic').value||'').trim();
+      if(topic && topic.toLowerCase()!==s.term.toLowerCase()){
+        try{ if(S.cfg.pexels) cands=cands.concat(await searchPexels(topic)); }catch(e){}
+        try{ if(S.cfg.pixabay) cands=cands.concat(await searchPixabay(topic)); }catch(e){}
+        if(cands.length) s.term=topic;
+      }
+    }
     const seen=new Set(); s.cands=cands.filter(c=>{ if(seen.has(c.url)) return false; seen.add(c.url); return true; }).slice(0,8);
-    if(s.cands.length) s.pick=s.cands[0];
+    const usedPick=new Set(S.scenes.slice(0,i).map(x=>x.pick&&x.pick.url).filter(Boolean));
+    s.pick=s.cands.find(c=>!usedPick.has(c.url))||s.cands[0]||null;
     renderScenes();
     setStatus(`Scene ${i+1}/${S.scenes.length} — ${s.cands.length} clips found.`);
   }
@@ -266,17 +275,25 @@ $('#btnMerge').addEventListener('click', async ()=>{
       const st=gj.content ? unb64(gj.content) : {status:'queued'};
       if(st.status==='done'){
         prog(100);
-        setStatus('Preparing download…');
+        setStatus('Preparing video…');
         try{
           const meta=await (await fetch(`${GH}/repos/${repoPath}/contents/${st.video_path}`,{headers:ghHeaders()})).json();
           const vb=await (await fetch(meta.download_url,{headers:{Authorization:'Bearer '+S.cfg.pat}})).blob();
           const durl=URL.createObjectURL(vb);
           const fname=(st.job&&st.job.title||'wildbot').replace(/[^\w\-]+/g,'_')+'.mp4';
-          $('#doneInfo').innerHTML=`✓ Ready (${st.duration||''}s) — <a href="${durl}" download="${fname}" style="color:var(--ok);font-weight:700">⬇ Download video</a>`;
+          S.videoUrl=durl; S.videoName=fname;
+          $('#doneInfo').innerHTML=`
+            <div style="margin:6px 0;font-weight:700;color:var(--ok)">✓ Ready (${st.duration||''}s)</div>
+            <video src="${durl}" controls playsinline preload="metadata" style="width:100%;border-radius:10px;background:#000"></video>
+            <button id="btnDl" style="width:100%;margin-top:10px;padding:14px;font-size:17px;font-weight:700">⬇ Download video</button>`;
+          $('#btnDl').onclick=()=>{
+            const a=document.createElement('a'); a.href=S.videoUrl; a.download=S.videoName;
+            document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),500);
+          };
         }catch(dlErr){
-          $('#doneInfo').innerHTML=`✓ Built (${st.duration||''}s) — tap Download to retry, or open in GitHub: <a style="color:#7CFC90" href="https://github.com/${repoPath}/blob/main/videos/${S.jobId}.mp4"><b>videos/${S.jobId}.mp4 ⬇</b></a>`;
+          $('#doneInfo').innerHTML=`✓ Built (${st.duration||''}s) — couldn't load preview, open in GitHub: <a style="color:#7CFC90" href="https://github.com/${repoPath}/blob/main/videos/${S.jobId}.mp4"><b>videos/${S.jobId}.mp4 ⬇</b></a>`;
         }
-        setStatus('Done! Download your video above.');
+        setStatus('Done! Watch the preview or download below.');
         break;
       }
       if(st.status==='error'){ throw new Error('Build failed: '+(st.message||'unknown')); }
