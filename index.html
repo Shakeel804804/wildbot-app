@@ -266,7 +266,7 @@ $('#btnMerge').addEventListener('click', async ()=>{
           const fname=(st.job&&st.job.title||'wildbot').replace(/[^\w\-]+/g,'_')+'.mp4';
           $('#doneInfo').innerHTML=`✓ Ready (${st.duration||''}s) — <a href="${durl}" download="${fname}" style="color:var(--ok);font-weight:700">⬇ Download video</a>`;
         }catch(dlErr){
-          $('#doneInfo').innerHTML=`✓ Built (${st.duration||''}s) — download failed in browser; get it from your repo: <b>videos/${S.jobId}.mp4</b>`;
+          $('#doneInfo').innerHTML=`✓ Built (${st.duration||''}s) — tap Download to retry, or open in GitHub: <a style="color:#7CFC90" href="https://github.com/${repoPath}/blob/main/videos/${S.jobId}.mp4"><b>videos/${S.jobId}.mp4 ⬇</b></a>`;
         }
         setStatus('Done! Download your video above.');
         break;
