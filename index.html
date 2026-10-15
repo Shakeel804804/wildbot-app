@@ -205,13 +205,22 @@ document.querySelectorAll('#transRow button').forEach(b=>b.onclick=()=>{
   b.classList.add('on'); S.transition=b.dataset.t;
 });
 
-/* upload file to catbox */
-async function catboxUpload(file, name){
-  const fd=new FormData(); fd.append('reqtype','fileupload'); fd.append('fileToUpload',file,name||'vo.mp3');
-  const r=await fetch('https://catbox.moe/user/api.php',{method:'POST',body:fd});
-  const url=(await r.text()).trim();
-  if(!url.startsWith('https://')) throw new Error('upload failed: '+url.slice(0,80));
-  return url;
+/* upload voiceover straight into the repo (no external file host) */
+async function repoUploadVO(file, jobId, repoPath){
+  setStatus('Uploading voiceover… (this can take a minute)');
+  const b64 = await new Promise((res, rej)=>{
+    const fr = new FileReader();
+    fr.onload = ()=> res(String(fr.result).split(',')[1]);
+    fr.onerror = ()=> rej(new Error('could not read audio file'));
+    fr.readAsDataURL(file);
+  });
+  const vpath = `vo/${jobId}.mp3`;
+  const r = await fetch(`${GH}/repos/${repoPath}/contents/${vpath}`,{
+    method:'PUT', headers:ghHeaders(),
+    body:JSON.stringify({message:'wildbot '+jobId+' vo', content:b64})});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok || !j.content) throw new Error('voiceover upload failed: '+(j.message||('HTTP '+r.status)));
+  return vpath;
 }
 
 /* merge */
@@ -222,11 +231,11 @@ $('#btnMerge').addEventListener('click', async ()=>{
   const b64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
   const unb64 = s => JSON.parse(decodeURIComponent(escape(atob(s.replace(/\n/g,'')))));
   try{
-    setStatus('Uploading voiceover…'); prog(8);
-    const vo_url=await catboxUpload(S.voFile, 'vo.mp3');
     S.jobId='j_'+Date.now().toString(36);
+    prog(8);
+    const vo_path=await repoUploadVO(S.voFile, S.jobId, repoPath);
     const payload={ job_id:S.jobId, title:$('#title').value||'wildbot',
-      transition:S.transition, vo_url, vo_dur:Math.round(S.voDur*10)/10,
+      transition:S.transition, vo_path, vo_dur:Math.round(S.voDur*10)/10,
       scenes:S.scenes.map(s=>({text:s.text,term:s.term,
         clips:(s.pick?[s.pick]:[]).concat(s.cands.filter(c=>c!==s.pick)).slice(0,4)
           .map(c=>({url:c.url,src:c.src,id:c.id})) })) };
