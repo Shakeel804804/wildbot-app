@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>WildBot — auto video builder</title>
+<style>
+  :root{ --bg:#0f1419; --card:#1a2330; --line:#2a3a4d; --txt:#e8eef4; --dim:#93a4b5; --acc:#ffb300; --ok:#35c759; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{ margin:0; background:var(--bg); color:var(--txt); font-family:-apple-system,Roboto,"Segoe UI",Arial,sans-serif; padding:12px; max-width:760px; margin:0 auto; }
+  h1{ font-size:20px; margin:6px 0 2px; }
+  .sub{ color:var(--dim); font-size:13px; margin-bottom:14px; }
+  .sec{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .sec h2{ font-size:16px; margin:0 0 10px; color:var(--acc); }
+  label.lbl{ display:block; font-size:13px; color:var(--dim); margin:10px 0 4px; }
+  input[type=text], input[type=password], textarea{ width:100%; background:#0c1117; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:10px; font-size:15px; }
+  textarea{ min-height:110px; resize:vertical; }
+  button{ background:var(--acc); color:#111; border:0; border-radius:10px; padding:13px 16px; font-size:15px; font-weight:700; width:100%; margin-top:10px; cursor:pointer; }
+  button.ghost{ background:transparent; color:var(--acc); border:1px solid var(--acc); }
+  button.small{ width:auto; padding:8px 12px; font-size:13px; margin-top:6px; }
+  button:disabled{ opacity:.45; }
+  .cfg{ display:none; }
+  .cfg.open{ display:block; }
+  .scene{ border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:10px; background:#141c26; }
+  .scene .meta{ font-size:12px; color:var(--dim); margin-bottom:4px; }
+  .grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px; }
+  .thumb{ position:relative; border-radius:8px; overflow:hidden; border:2px solid transparent; cursor:pointer; aspect-ratio:16/9; background:#000; }
+  .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .thumb.picked{ border-color:var(--ok); }
+  .thumb .tag{ position:absolute; top:4px; left:4px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 6px; border-radius:6px; }
+  .trans{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .trans button{ padding:12px 4px; font-size:13px; margin-top:0; background:#0c1117; color:var(--txt); border:1px solid var(--line); }
+  .trans button.on{ background:var(--acc); color:#111; border-color:var(--acc); }
+  .note{ font-size:12px; color:var(--dim); margin-top:8px; line-height:1.5; }
+  .okline{ color:var(--ok); font-size:13px; margin-top:6px; }
+  .err{ color:#ff6b6b; font-size:13px; margin-top:6px; }
+  #status{ position:sticky; top:0; background:#0c1117; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px; z-index:5; }
+  .prog{ height:8px; background:#0c1117; border-radius:6px; overflow:hidden; margin-top:8px; display:none; }
+  .prog i{ display:block; height:100%; width:0; background:var(--acc); transition:width .4s; }
+</style>
+</head>
+<body>
+<h1>🤖 WildBot <span style="font-size:12px;color:var(--dim)">auto video builder</span></h1>
+<div class="sub">Title → Script → Voiceover → Find Clips → Merge → Download. No manual clip-picking needed.</div>
+<div id="status">Step 1: open ⚙ Config once, then add title, script & voiceover.</div>
+
+<div class="sec">
+  <h2>⚙ Config <button class="small ghost" style="float:right" onclick="document.getElementById('cfg').classList.toggle('open')">show/hide</button></h2>
+  <div class="cfg" id="cfg">
+    <label class="lbl">GitHub owner (username)</label><input type="text" id="c_owner">
+    <label class="lbl">GitHub repo (wildbot-engine)</label><input type="text" id="c_repo">
+    <label class="lbl">GitHub PAT (classic, repo scope)</label><input type="password" id="c_pat">
+    <label class="lbl">Pexels API key</label><input type="password" id="c_pexels">
+    <label class="lbl">Pixabay API key</label><input type="password" id="c_pixabay">
+    <button class="ghost" onclick="saveCfg()">💾 Save on this device</button>
+    <div class="note">Keys stay on your phone only. Setup guide: SETUP.md</div>
+  </div>
+</div>
+
+<div class="sec">
+  <h2>1 · Title, Script, Voiceover</h2>
+  <label class="lbl">Title</label><input type="text" id="title" placeholder="Video title">
+  <label class="lbl">Script (narration)</label><textarea id="script" placeholder="Paste full narration…"></textarea>
+  <label class="lbl">Voiceover (mp3)</label><input type="file" id="vo" accept="audio/*">
+  <div class="okline" id="voInfo"></div>
+</div>
+
+<div class="sec" id="secFind" style="display:none">
+  <h2>2 · Find Clips <span style="font-size:12px;color:var(--dim)">(Pexels + Pixabay)</span></h2>
+  <button id="btnFind">🔍 Find Clips</button>
+  <div id="scenes" style="margin-top:10px"></div>
+  <div class="note">Best clip per scene is auto-picked (bot re-verifies the liveliest 5s part during build). Tap any thumbnail to change the pick.</div>
+</div>
+
+<div class="sec" id="secTrans" style="display:none">
+  <h2>3 · Transition (every scene change)</h2>
+  <div class="trans" id="transRow">
+    <button data-t="cut" class="on">Cut</button>
+    <button data-t="dissolve">Dissolve</button>
+    <button data-t="fadeblack">Fade black</button>
+    <button data-t="wipe">Wipe</button>
+  </div>
+</div>
+
+<div class="sec" id="secMerge" style="display:none">
+  <h2>4 · Merge & Render</h2>
+  <button id="btnMerge">🎬 Merge Clips</button>
+  <div class="prog" id="prog"><i></i></div>
+  <div class="okline" id="doneInfo"></div>
+  <div class="err" id="errInfo"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const S = { cfg:{}, voDur:0, voFile:null, scenes:[], transition:'cut', jobId:null, gistId:null };
+const GH = 'https://api.github.com';
+
+/* config */
+['owner','repo','pat','pexels','pixabay'].forEach(k=>{
+  try{ const v = localStorage.getItem('wb_'+k); if(v){ S.cfg[k]=v; $('#c_'+k).value=v; } }catch(e){}
+});
+function saveCfg(){
+  ['owner','repo','pat','pexels','pixabay'].forEach(k=>{
+    S.cfg[k]=$('#c_'+k).value.trim(); try{localStorage.setItem('wb_'+k,S.cfg[k]);}catch(e){}
+  });
+  setStatus('Config saved. Now add title, script & voiceover.');
+}
+function needCfg(){
+  for(const k of ['owner','repo','pat'])
+    if(!S.cfg[k]){ setStatus('⚙ Config incomplete — open Config and fill: '+k); return false; }
+  if(!S.cfg.pexels && !S.cfg.pixabay){ setStatus('Add at least one: Pexels or Pixabay key.'); return false; }
+  return true;
+}
+function ghHeaders(){ return { Authorization:'Bearer '+S.cfg.pat, Accept:'application/vnd.github+json', 'Content-Type':'application/json' }; }
+
+/* voiceover */
+$('#vo').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(!f) return; S.voFile=f;
+  const a=new Audio(); a.preload='metadata';
+  a.onloadedmetadata=()=>{
+    S.voDur=a.duration;
+    const n=Math.max(1,Math.round(a.duration/5));
+    $('#voInfo').textContent=`✓ ${f.name} — ${a.duration.toFixed(1)}s → ${n} clips of 5s`;
+    $('#secFind').style.display='block';
+    setStatus(`Voiceover ${a.duration.toFixed(1)}s. Now paste script, then Find Clips.`);
+  };
+  a.src=URL.createObjectURL(f);
+});
+
+/* scene split */
+function sentences(t){ return t.replace(/\n+/g,' ').match(/[^.!?]+[.!?]+["']?|\S[^.!?]*$/g)?.map(s=>s.trim()).filter(Boolean)||[]; }
+function autoTerm(text){
+  const stop=new Set('the,a,an,and,of,to,in,is,are,was,were,it,its,for,on,with,as,by,at,from,that,this,these,those,he,she,they,we,you,i,not,but,or,so,very,just,like,than,then,when,where,what,which,who,whom,whose,how,all,any,both,each,few,more,most,other,some,such,no,nor,only,own,same,too,can,will,has,have,had,do,does,did,been,being,into,over,after,before,between,through,during,under,again,once,here,there'.split(','));
+  const words=text.toLowerCase().replace(/[^a-z\s]/g,'').split(/\s+/).filter(w=>w.length>3&&!stop.has(w));
+  const fq={}; words.forEach(w=>fq[w]=(fq[w]||0)+1);
+  return Object.entries(fq).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]).join(' ');
+}
+function splitScenes(){
+  const script=$('#script').value.trim();
+  const n=Math.max(1,Math.round(S.voDur/5));
+  const sents=sentences(script), words=script.split(/\s+/).length, per=words/n;
+  const scenes=[]; let cur=[],cw=0;
+  for(const s of sents){
+    const sw=s.split(/\s+/).length;
+    if(cw+sw>per+4&&cur.length){ scenes.push(cur.join(' ')); cur=[]; cw=0; }
+    cur.push(s); cw+=sw;
+  }
+  if(cur.length) scenes.push(cur.join(' '));
+  return scenes.map((text,i)=>({ text, term:autoTerm(text), cands:[], pick:null }));
+}
+
+/* find clips */
+async function searchPexels(q){
+  const r=await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&per_page=8&orientation=landscape`,{headers:{Authorization:S.cfg.pexels}});
+  if(!r.ok) throw new Error('Pexels '+r.status);
+  const j=await r.json();
+  return (j.videos||[]).filter(v=>v.duration>=6).map(v=>{
+    const f=(v.video_files||[]).filter(f=>f.width>=1280).sort((a,b)=>Math.abs(a.width-1920)-Math.abs(b.width-1920))[0]||v.video_files[0];
+    return {src:'pexels',id:v.id,url:f&&f.link,thumb:v.image,dur:v.duration};
+  }).filter(v=>v.url);
+}
+async function searchPixabay(q){
+  const r=await fetch(`https://pixabay.com/api/videos/?key=${S.cfg.pixabay}&q=${encodeURIComponent(q)}&per_page=8`);
+  if(!r.ok) throw new Error('Pixabay '+r.status);
+  const j=await r.json();
+  return (j.hits||[]).filter(h=>h.duration>=6).map(h=>({src:'pixabay',id:h.id,url:h.videos.medium.url,thumb:h.previewURL,dur:h.duration,tags:h.tags})).filter(v=>v.url);
+}
+$('#btnFind').addEventListener('click', async ()=>{
+  if(!needCfg()) return;
+  if(!S.voDur){ setStatus('Upload voiceover first.'); return; }
+  if(!$('#script').value.trim()){ setStatus('Paste the script first.'); return; }
+  S.scenes=splitScenes();
+  setStatus(`Finding clips for ${S.scenes.length} scenes…`);
+  $('#btnFind').disabled=true;
+  for(let i=0;i<S.scenes.length;i++){
+    const s=S.scenes[i]; let cands=[];
+    try{ if(S.cfg.pexels) cands=cands.concat(await searchPexels(s.term)); }catch(e){}
+    try{ if(S.cfg.pixabay) cands=cands.concat(await searchPixabay(s.term)); }catch(e){}
+    const seen=new Set(); s.cands=cands.filter(c=>{ if(seen.has(c.url)) return false; seen.add(c.url); return true; }).slice(0,8);
+    if(s.cands.length) s.pick=s.cands[0];
+    renderScenes();
+    setStatus(`Scene ${i+1}/${S.scenes.length} — ${s.cands.length} clips found.`);
+  }
+  $('#btnFind').disabled=false;
+  if(S.scenes.every(s=>s.cands.length)){ $('#secTrans').style.display='block'; $('#secMerge').style.display='block'; }
+  setStatus('Clips found. Pick a transition, then Merge Clips.');
+});
+function renderScenes(){
+  const w=$('#scenes'); w.innerHTML='';
+  S.scenes.forEach((s,i)=>{
+    const d=document.createElement('div'); d.className='scene';
+    d.innerHTML=`<div class="meta">Scene ${i+1} · 0:${String(i*5).padStart(2,'0')}–0:${String(Math.min((i+1)*5,Math.round(S.voDur))).padStart(2,'0')} · "${esc(s.term)}" ${s.pick?'· ✓ '+s.pick.src:''}</div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">${esc(s.text.slice(0,90))}…</div>
+      <div class="grid">${s.cands.map((c,ci)=>`<div class="thumb${s.pick===c?' picked':''}" onclick="pick(${i},${ci})"><span class="tag">${c.src} ${Math.round(c.dur)}s</span><img src="${c.thumb}" loading="lazy"></div>`).join('')}</div>`;
+    w.appendChild(d);
+  });
+}
+function pick(i,ci){ S.scenes[i].pick=S.scenes[i].cands[ci]; renderScenes(); }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+window.pick=pick;
+
+/* transition */
+document.querySelectorAll('#transRow button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#transRow button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); S.transition=b.dataset.t;
+});
+
+/* upload file to catbox */
+async function catboxUpload(file, name){
+  const fd=new FormData(); fd.append('reqtype','fileupload'); fd.append('fileToUpload',file,name||'vo.mp3');
+  const r=await fetch('https://catbox.moe/user/api.php',{method:'POST',body:fd});
+  const url=(await r.text()).trim();
+  if(!url.startsWith('https://')) throw new Error('upload failed: '+url.slice(0,80));
+  return url;
+}
+
+/* merge */
+$('#btnMerge').addEventListener('click', async ()=>{
+  if(!needCfg()) return;
+  $('#btnMerge').disabled=true; $('#errInfo').textContent=''; $('#doneInfo').innerHTML='';
+  const repoPath=`${S.cfg.owner}/${S.cfg.repo}`;
+  const b64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+  const unb64 = s => JSON.parse(decodeURIComponent(escape(atob(s.replace(/\n/g,'')))));
+  try{
+    setStatus('Uploading voiceover…'); prog(8);
+    const vo_url=await catboxUpload(S.voFile, 'vo.mp3');
+    S.jobId='j_'+Date.now().toString(36);
+    const payload={ job_id:S.jobId, title:$('#title').value||'wildbot',
+      transition:S.transition, vo_url, vo_dur:Math.round(S.voDur*10)/10,
+      scenes:S.scenes.map(s=>({text:s.text,term:s.term,
+        clips:(s.pick?[s.pick]:[]).concat(s.cands.filter(c=>c!==s.pick)).slice(0,4)
+          .map(c=>({url:c.url,src:c.src,id:c.id})) })) };
+    setStatus('Creating job…'); prog(18);
+    const put=await (await fetch(`${GH}/repos/${repoPath}/contents/jobs/${S.jobId}.json`,{
+      method:'PUT', headers:ghHeaders(),
+      body:JSON.stringify({message:'wildbot '+S.jobId,
+        content:b64({status:'queued',job:payload})})})).json();
+    if(!put.content) throw new Error('job file failed: '+(put.message||'unknown'));
+    setStatus('Starting bot…'); prog(28);
+    const gh=await fetch(`${GH}/repos/${repoPath}/dispatches`,{
+      method:'POST', headers:ghHeaders(),
+      body:JSON.stringify({event_type:'wildbot-build',client_payload:{job_id:S.jobId}})});
+    if(!gh.ok) throw new Error('GitHub dispatch failed ('+gh.status+') — check owner/repo/PAT');
+    setStatus('Bot is building… (usually 3–8 min)'); prog(36);
+    const t0=Date.now();
+    while(Date.now()-t0 < 30*60*1000){
+      await new Promise(r=>setTimeout(r,15000));
+      const gj=await (await fetch(`${GH}/repos/${repoPath}/contents/jobs/${S.jobId}.json`,{headers:ghHeaders()})).json();
+      const st=gj.content ? unb64(gj.content) : {status:'queued'};
+      if(st.status==='done'){
+        prog(100);
+        setStatus('Preparing download…');
+        try{
+          const meta=await (await fetch(`${GH}/repos/${repoPath}/contents/${st.video_path}`,{headers:ghHeaders()})).json();
+          const vb=await (await fetch(meta.download_url,{headers:{Authorization:'Bearer '+S.cfg.pat}})).blob();
+          const durl=URL.createObjectURL(vb);
+          const fname=(st.job&&st.job.title||'wildbot').replace(/[^\w\-]+/g,'_')+'.mp4';
+          $('#doneInfo').innerHTML=`✓ Ready (${st.duration||''}s) — <a href="${durl}" download="${fname}" style="color:var(--ok);font-weight:700">⬇ Download video</a>`;
+        }catch(dlErr){
+          $('#doneInfo').innerHTML=`✓ Built (${st.duration||''}s) — download failed in browser; get it from your repo: <b>videos/${S.jobId}.mp4</b>`;
+        }
+        setStatus('Done! Download your video above.');
+        break;
+      }
+      if(st.status==='error'){ throw new Error('Build failed: '+(st.message||'unknown')); }
+      prog(Math.min(92,36+(Date.now()-t0)/(30*60*1000)*56));
+      setStatus('Bot is building… status: '+(st.status||'working'));
+    }
+  }catch(e){ $('#errInfo').textContent='✗ '+e.message; setStatus('Failed. Check Config and SETUP.md.'); }
+  $('#btnMerge').disabled=false;
+});
+function prog(p){ const el=$('#prog'); el.style.display='block'; el.firstElementChild.style.width=p+'%'; }
+function setStatus(t){ $('#status').textContent=t; }
+</script>
+</body>
+</html>
